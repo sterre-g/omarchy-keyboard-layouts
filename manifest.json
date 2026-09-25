@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "sterre.keyboard-layouts",
   "name": "Keyboard Layouts",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": "sterre-g",
   "license": "MIT",
   "description": "A layout per keyboard, from QWERTY, AZERTY, every Colemak-DH variant and Dvorak. Each keyboard keeps its own, and one you have not plugged in before gets the layout you picked for new keyboards.",

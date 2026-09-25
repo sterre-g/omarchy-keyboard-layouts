@@ -7,7 +7,10 @@ const fixture = name => fs.readFileSync(path.join(__dirname, "fixtures", name), 
 const devicesJson = fixture("devices.json")
 const procText = fixture("proc-devices.txt")
 const devices = JSON.parse(devicesJson).keyboards
-const proc = M.parseProc(procText)
+// The USB ports the Legion that took the fixtures calls fixed: its two ITE
+// keyboard controllers.
+const FIXED = ["1-4", "3-3"]
+const proc = M.parseProc(procText, FIXED)
 
 const CORNE = [
   "keebart-corne_choc_pro",
@@ -47,26 +50,36 @@ run("the interfaces of one keyboard share one name", () => {
   assert.equal(M.groupKey("ite-tech.-inc.-ite-device(8910)-wireless-radio-control"), "ite-tech.-inc.-ite-device(8910)")
 })
 
+run("only a keyboard inside the machine counts as built in", () => {
+  const builtIn = Object.keys(proc).filter(key => proc[key].typing && proc[key].builtIn).sort()
+  assert.deepEqual(builtIn, [
+    "at-translated-set-2-keyboard",
+    "ite-tech.-inc.-ite-device(8295)-keyboard",
+    "ite-tech.-inc.-ite-device(8910)-keyboard",
+  ])
+  assert.equal(M.parseProc(procText, ["1-2"])["logitech-g305"].builtIn, false)
+  const bluetooth = [
+    "I: Bus=0005 Vendor=046d Product=b342 Version=0001",
+    'N: Name="BT Keyboard"',
+    "S: Sysfs=/devices/pci0000:00/0000:00:08.1/0000:05:00.3/usb1/1-3/1-3:1.0/bluetooth/hci0/hci0:256/0005:046D:B342.0005/input/input30",
+  ].join("\n")
+  assert.equal(M.parseProc(bluetooth, ["1-3"])["bt-keyboard"].builtIn, false)
+})
+
 run("a first reading keeps every keyboard on the layout it already has", () => {
   const out = M.plan(devices, proc, M.parseState(""), {})
   assert.deepEqual(out.changes, [])
   assert.deepEqual(out.groups.map(g => [g.label, g.id]), [
-    ["Built-in keyboard", "colemak-dh-wide-iso"],
-    ["ITE Tech. Inc. ITE Device(8295)", "qwerty"],
-    ["ITE Tech. Inc. ITE Device(8910)", "qwerty"],
+    ["Built-in keyboard", "system"],
     ["Keebart corne_choc_pro", "qwerty"],
     ["Logitech G305", "qwerty"],
   ])
   assert.equal(out.state.keyboards["keebart-corne_choc_pro"], "qwerty")
-  assert.equal(out.state.keyboards["at-translated-set-2"], "colemak-dh-wide-iso")
   assert.equal(M.plan(devices, proc, out.state, {}).state, null)
 })
 
 run("a keyboard seen for the first time gets the new keyboard layout", () => {
-  const state = stateWith("colemak-dh-wide-iso", {
-    "at-translated-set-2": "colemak-dh-wide-iso",
-    "keebart-corne_choc_pro": "qwerty",
-  })
+  const state = stateWith("colemak-dh-wide-iso", { "keebart-corne_choc_pro": "qwerty" })
   const out = M.plan(devices, proc, state, {})
   assert.deepEqual(out.changes.map(c => c.name).sort(), [
     "ite-tech.-inc.-ite-device(8295)-keyboard",
@@ -75,6 +88,7 @@ run("a keyboard seen for the first time gets the new keyboard layout", () => {
     "logitech-g305",
   ])
   assert.ok(out.changes.every(c => c.layout === "us" && c.variant === "colemak_dh_wide_iso"))
+  assert.equal(out.state.keyboards["built-in"], "colemak-dh-wide-iso")
   assert.equal(out.state.keyboards["logitech-g305"], "colemak-dh-wide-iso")
   assert.equal(out.state.keyboards["keebart-corne_choc_pro"], "qwerty")
 })
@@ -131,6 +145,12 @@ run("the reading splits hyprctl from /proc", () => {
   assert.equal(reading.proc["keebart-corne_choc_pro"].typing, true)
   assert.equal(M.parseReading("not json\n#proc\n" + procText), null)
   assert.equal(M.parseReading(devicesJson), null)
+
+  const ite = "ite-tech.-inc.-ite-device(8910)-keyboard"
+  assert.equal(reading.proc[ite].builtIn, false)
+  const fixed = M.parseReading(devicesJson + "\n#proc\n" + procText + "\n\n#fixed\n/sys/bus/usb/devices/1-4/removable\n")
+  assert.equal(fixed.proc[ite].builtIn, true)
+  assert.equal(fixed.proc["logitech-g305"].builtIn, false)
 })
 
 run("the state file survives garbage and drops what it does not know", () => {
@@ -154,8 +174,8 @@ run("the state file survives garbage and drops what it does not know", () => {
 run("keyboards and layouts can be named loosely", () => {
   const { groups } = M.plan(devices, proc, M.parseState(""), {})
   assert.equal(M.findKeyboard(groups, "corne").key, "keebart-corne_choc_pro")
-  assert.equal(M.findKeyboard(groups, "Built-in").key, "at-translated-set-2")
-  assert.match(M.findKeyboard(groups, "ite").error, /matches ITE/)
+  assert.equal(M.findKeyboard(groups, "Built-in").key, "built-in")
+  assert.match(M.findKeyboard(groups, "e").error, /matches Built-in keyboard, Keebart/)
   assert.match(M.findKeyboard(groups, "hp elite").error, /no connected keyboard/)
 
   assert.equal(M.findLayout("Colemak-DH Wide ISO"), "colemak-dh-wide-iso")

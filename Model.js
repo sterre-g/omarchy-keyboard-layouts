@@ -1,6 +1,7 @@
 var SYSTEM = "system"
-var BUILT_IN = "at-translated-set-2"
+var BUILT_IN = "built-in"
 var PROC_MARKER = "#proc"
+var FIXED_MARKER = "#fixed"
 
 var LAYOUTS = [
   { id: "qwerty", label: "QWERTY", layout: "us", variant: "" },
@@ -25,8 +26,15 @@ var INTERFACES = "keyboard|keypad|mouse|system control|consumer control|wireless
 var LABEL_SUFFIX = new RegExp(" (" + INTERFACES + ")$", "i")
 var NAME_SUFFIX = new RegExp("-(" + INTERFACES.replace(/ /g, "-") + ")$")
 
+// Bus numbers from linux/input.h. i8042, I2C, host and SPI only ever carry a
+// machine's own keyboard; USB carries both, and the firmware marks a port
+// inside the machine as fixed.
+var BUILT_IN_BUSES = ["0011", "0018", "0019", "001c"]
+var USB_BUS = "0003"
+
 var READ_COMMAND = ["sh", "-c",
-  "hyprctl -j devices && printf '\\n" + PROC_MARKER + "\\n' && cat /proc/bus/input/devices"]
+  "hyprctl -j devices && printf '\\n" + PROC_MARKER + "\\n' && cat /proc/bus/input/devices"
+  + " && printf '\\n" + FIXED_MARKER + "\\n' && grep -lx fixed /sys/bus/usb/devices/*/removable 2>/dev/null"]
 
 function layoutById(id) {
   for (var i = 0; i < LAYOUTS.length; i++) {
@@ -87,9 +95,20 @@ function hasLetters(keyLine) {
   return LETTER_CODES.every(function (code) { return Math.floor(low / Math.pow(2, code)) % 2 === 1 })
 }
 
+// The port a USB input sits on is the last path segment named like 1-4 or
+// 1-2.1. A keyboard behind a hub in the machine is still on its own port, and
+// a Bluetooth keyboard is not on the adapter's.
+function isBuiltIn(block, fixed) {
+  var bus = (block.match(/^I: Bus=(\w+)/m) || [])[1]
+  if (bus !== USB_BUS) return BUILT_IN_BUSES.indexOf(bus) !== -1
+  var sysfs = (block.match(/^S: Sysfs=(.*)$/m) || [])[1] || ""
+  var port = sysfs.split("/").filter(function (part) { return /^\d+-[\d.]+$/.test(part) }).pop()
+  return fixed.indexOf(port) !== -1
+}
+
 // Hyprland lists power buttons, lid switches and a mouse's media keys as
 // keyboards. The kernel knows which devices can type a letter.
-function parseProc(text) {
+function parseProc(text, fixed) {
   var devices = Object.create(null)
   String(text || "").split(/\n\s*\n/).forEach(function (block) {
     var name = block.match(/^N: Name="(.*)"$/m)
@@ -99,7 +118,8 @@ function parseProc(text) {
     var known = devices[key]
     devices[key] = {
       label: name[1].replace(LABEL_SUFFIX, ""),
-      typing: (!!keys && hasLetters(keys[1])) || (!!known && known.typing)
+      typing: (!!keys && hasLetters(keys[1])) || (!!known && known.typing),
+      builtIn: isBuiltIn(block, fixed || []) || (!!known && known.builtIn)
     }
   })
   return devices
@@ -116,7 +136,10 @@ function parseReading(text) {
     return null
   }
   if (!devices || !Array.isArray(devices.keyboards)) return null
-  return { keyboards: devices.keyboards, proc: parseProc(raw.slice(at + PROC_MARKER.length + 2)) }
+  var rest = raw.slice(at + PROC_MARKER.length + 2)
+  var cut = rest.indexOf("\n" + FIXED_MARKER + "\n")
+  var fixed = cut === -1 ? [] : rest.slice(cut).match(/[^\/\n]+(?=\/removable$)/gm) || []
+  return { keyboards: devices.keyboards, proc: parseProc(cut === -1 ? rest : rest.slice(0, cut), fixed) }
 }
 
 function copyKeyboards(keyboards) {
@@ -129,6 +152,11 @@ function withKeyboard(state, key, id) {
   var keyboards = copyKeyboards(state.keyboards)
   keyboards[key] = id
   return { newKeyboards: state.newKeyboards, keyboards: keyboards }
+}
+
+function typedLayout(devices) {
+  var ids = devices.map(function (kb) { return idFor(kb.layout, kb.variant) })
+  return ids.every(function (id) { return id !== null && id === ids[0] }) ? ids[0] : SYSTEM
 }
 
 // A keyboard is pinned the first time it is seen: to the new keyboard layout
@@ -147,15 +175,27 @@ function plan(keyboards, proc, state, attempted) {
     var key = groupKey(name)
     var group = byKey[key]
     if (!group) {
-      group = byKey[key] = { key: key, label: "", devices: [], lead: null }
+      group = byKey[key] = { key: key, label: "", devices: [], typing: [], builtIn: false }
       order.push(group)
     }
     group.devices.push(kb)
-    if (info && info.typing && !group.lead) {
-      group.lead = kb
-      group.label = key === BUILT_IN ? "Built-in keyboard" : info.label
+    if (info && info.typing) {
+      if (group.typing.length === 0) group.label = info.label
+      group.typing.push(kb)
+      group.builtIn = group.builtIn || info.builtIn
     }
   })
+
+  // A laptop can type through a different controller than the one it looks
+  // like it has, so every keyboard inside the machine is the one row.
+  var builtIn = { key: BUILT_IN, label: "Built-in keyboard", devices: [], typing: [] }
+  order = order.filter(function (group) {
+    if (!group.builtIn) return true
+    builtIn.devices = builtIn.devices.concat(group.devices)
+    builtIn.typing = builtIn.typing.concat(group.typing)
+    return false
+  })
+  if (builtIn.typing.length > 0) order.push(builtIn)
 
   var pinned = copyKeyboards(state.keyboards)
   var stateChanged = false
@@ -164,16 +204,14 @@ function plan(keyboards, proc, state, attempted) {
   var nextAttempted = {}
 
   order.forEach(function (group) {
-    if (!group.lead) return
+    if (group.typing.length === 0) return
     var id = pinned[group.key]
     if (id === undefined) {
-      id = state.newKeyboards !== SYSTEM
-        ? state.newKeyboards
-        : (idFor(group.lead.layout, group.lead.variant) || SYSTEM)
+      id = state.newKeyboards !== SYSTEM ? state.newKeyboards : typedLayout(group.typing)
       pinned[group.key] = id
       stateChanged = true
     }
-    groups.push({ key: group.key, label: group.label, id: id, keymap: String(group.lead.active_keymap || "") })
+    groups.push({ key: group.key, label: group.label, id: id, keymap: String(group.typing[0].active_keymap || "") })
 
     var target = layoutById(id)
     if (!target) return

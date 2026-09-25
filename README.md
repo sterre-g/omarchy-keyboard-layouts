@@ -64,14 +64,21 @@ keyboard into (`Keyboard`, `Mouse`, `System Control`, `Consumer Control`) as
 one keyboard, so a Corne is one row and all of its parts switch together.
 Virtual keyboards, like the one fcitx5 types through, are never touched.
 
+Every keyboard inside the machine is one row, Built-in keyboard: one on the
+PS/2, I2C, SPI or host bus, or a USB one on a port the firmware marks as fixed
+in `/sys/bus/usb/devices/*/removable`. A laptop does not always type through
+the keyboard it looks like it has. A Lenovo Legion 5 Pro has a PS/2 keyboard
+that sends nothing and types through a USB controller from ITE, so the row
+switches all of them.
+
 A keyboard first seen on a layout that is not in the list above, or on more
 than one layout, is left as Hyprland has it until you pick one.
 
 ## How it works
 
-[Service.qml](Service.qml) reads `hyprctl -j devices` and
-`/proc/bus/input/devices`, and for each device whose layout differs from the one
-it should have, sends
+[Service.qml](Service.qml) reads `hyprctl -j devices`, `/proc/bus/input/devices`
+and which USB ports are fixed, and for each device whose layout differs from the
+one it should have, sends
 
 ```lua
 hl.device({ name = "keebart-corne_choc_pro", kb_layout = "us", kb_variant = "" })
