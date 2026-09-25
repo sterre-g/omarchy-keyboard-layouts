@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")"
+
+node test/model.test.js
+
+lua="$(command -v lua5.5 || command -v lua5.4 || command -v lua || true)"
+if [ -z "$lua" ]; then
+  echo "no lua interpreter found, skipping test/escape.test.lua" >&2
+  exit 0
+fi
+
+scratch="$(mktemp -d)"
+trap 'rm -rf "$scratch"' EXIT
+chunk() {
+  node -e 'process.stdout.write(require("./Model.js").luaFor([{ name: process.argv[1], layout: "us", variant: "" }]))' "$1"
+}
+hostile=$'evil"}) os.exit(1) --\\ ]]\n--[['
+chunk "$hostile" > "$scratch/hostile.lua"
+chunk $'bell\x07' > "$scratch/control.lua"
+"$lua" test/escape.test.lua "$scratch/hostile.lua" "$hostile" "$scratch/control.lua"

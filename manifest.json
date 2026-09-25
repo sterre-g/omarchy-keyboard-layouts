@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "sterre.keyboard-layouts",
+  "name": "Keyboard Layouts",
+  "version": "0.1.0",
+  "author": "sterre-g",
+  "license": "MIT",
+  "description": "A layout per keyboard, from QWERTY, AZERTY, every Colemak-DH variant and Dvorak. Each keyboard keeps its own, and one you have not plugged in before gets the layout you picked for new keyboards.",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Keyboard Layouts",
+    "description": "A layout per keyboard, and one for keyboards you have not plugged in yet",
+    "category": "Input",
+    "aliases": [
+      "layout",
+      "qwerty",
+      "azerty",
+      "colemak",
+      "dvorak"
+    ],
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {}
+  }
+}
