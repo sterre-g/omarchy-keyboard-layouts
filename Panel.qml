@@ -1,8 +1,11 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import Quickshell
 import Quickshell.Hyprland
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 import "Model.js" as Model
 
@@ -12,8 +15,8 @@ Panel {
   manageIpc: false
 
   // Each monitor has its own copy of this widget, so the service owns the
-  // state and the talking to Hyprland. Resolved by assignment rather than a
-  // binding: ensureService() writes the shell state serviceFor() reads.
+  // state and the talking to Hyprland. serviceFor() is a plain function, so a
+  // binding would never see the service arrive; the Timer below polls for it.
   property var service: null
   readonly property var groups: root.service ? root.service.groups : []
   readonly property string newKeyboards: root.service ? root.service.newKeyboards : Model.SYSTEM
@@ -30,7 +33,7 @@ Panel {
     ? Hyprland.focusedMonitor.name === root.screenName
     : false
 
-  readonly property color foreground: bar ? bar.foreground : Color.foreground
+  readonly property color foreground: bar ? bar.foreground : Commons.Color.foreground
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
@@ -41,7 +44,6 @@ Panel {
     if (root.service || !root.bar || !root.bar.shell) return
     var shell = root.bar.shell
     var found = typeof shell.serviceFor === "function" ? shell.serviceFor(root.moduleName) : null
-    if (!found && typeof shell.ensureService === "function") found = shell.ensureService(root.moduleName)
     if (!found) return
     root.service = found
     root.service.registerWidget(root)
@@ -54,7 +56,7 @@ Panel {
   function step(direction) {
     if (!root.service) return
     if (root.cursorIndex < root.groups.length) {
-      var group = root.groups[root.cursorIndex]
+      const group = root.groups[root.cursorIndex]
       root.service.assign(group.key, Model.stepLayout(group.id, direction, false))
     } else {
       root.service.setNewKeyboards(Model.stepLayout(root.newKeyboards, direction, true))
@@ -108,8 +110,6 @@ Panel {
     Qt.callLater(function () { keyCatcher.forceActiveFocus() })
   }
 
-  // The service is created lazily by the shell, so a widget built first has to
-  // look again rather than give up.
   Timer {
     interval: 250
     repeat: true
@@ -170,6 +170,7 @@ Panel {
           }
 
           Text {
+            textFormat: Text.PlainText
             width: parent.width
             visible: root.groups.length === 0
             text: root.service ? "Looking for keyboards" : "Waiting for the layout service"
@@ -226,6 +227,7 @@ Panel {
           }
 
           Text {
+            textFormat: Text.PlainText
             width: parent.width
             text: "A keyboard keeps the layout you give it. One you have not plugged in before gets the new keyboard layout."
               + "\nj/k move, h/l change the layout, Enter opens the list"
