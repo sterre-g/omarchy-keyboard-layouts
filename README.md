@@ -106,9 +106,8 @@ Limits:
 ## Development
 
 ```sh
-./run-tests
+./run-tests       # node, lua, omarchy plugin validate, Qt 6 qmllint
 ./dev-sync
-omarchy plugin validate ~/.config/omarchy/plugins/sterre.keyboard-layouts
 omarchy-shell shell rescanPlugins
 ```
 
