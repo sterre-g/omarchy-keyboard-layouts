@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
+import qs.Commons
 import "Model.js" as Model
 
 Item {
@@ -144,7 +145,7 @@ Item {
     }
   }
 
-  IpcHandler {
+  ShellIpc {
     target: "sterre.keyboard-layouts"
 
     function open(): void {

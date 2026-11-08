@@ -10,6 +10,8 @@ Ortholinear) and Dvorak.
 
 ## Install
 
+Needs Omarchy 4.5 or newer.
+
 ```sh
 omarchy plugin add https://github.com/sterre-g/omarchy-keyboard-layouts.git --enable
 omarchy plugin enable sterre.keyboard-layouts --section right
