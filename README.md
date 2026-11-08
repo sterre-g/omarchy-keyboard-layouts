@@ -21,6 +21,17 @@ Nothing changes when it starts: every keyboard that is plugged in keeps the
 layout it already has, and new keyboards are left to your Hyprland config until
 you pick a layout for them.
 
+## Remove
+
+```sh
+omarchy plugin remove sterre.keyboard-layouts
+rm -f ~/.local/state/omarchy/sterre-keyboard-layouts.json
+```
+
+Keyboards keep the layout the plugin last gave them for the rest of the
+session; from the next login they have what your Hyprland config gives them.
+The second line deletes the layouts you picked.
+
 ## Using it
 
 Click the keyboard icon on the bar. Each keyboard that is plugged in has a row
